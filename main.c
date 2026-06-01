@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
@@ -11,6 +12,37 @@
 #include <sys/stat.h>
 
 #include "selfpager.h"
+
+typedef struct notify_request {
+  char useless1[45];
+  char message[3075];
+} notify_request_t;
+
+int sceKernelSendNotificationRequest(int, notify_request_t*, size_t, int);
+
+int Notify(const char* format, ...)
+{
+    notify_request_t notifyRequest;
+    
+    // Clear the notifyRequest structure
+    bzero(&notifyRequest, sizeof(notifyRequest));
+
+    // Initialize the va_list to process the variable arguments
+    va_list args;
+    va_start(args, format);
+
+    // Use vsnprintf to safely format the variable arguments into the message buffer
+    vsnprintf(notifyRequest.message, sizeof(notifyRequest.message), format, args);
+
+    // Clean up the va_list
+    va_end(args);
+
+    //Print the message
+    printf("%s", notifyRequest.message);
+
+    // Send the notification with the message
+    return sceKernelSendNotificationRequest(0, &notifyRequest, sizeof(notifyRequest), 0);
+}
 
 static void mkdirs(const char *dir) {
     char tmp[PATH_MAX];
@@ -59,7 +91,7 @@ int decrypt_self_by_path(const char *input_file_path, const char *output_file_pa
     if (res == DECRYPT_ERROR_INPUT_NOT_SELF) {
         return res;
     } else if (res != 0) {
-        printf("Failed to decrypt self: %s , error %d\n", input_file_path, res);
+        Notify("Failed to decrypt self: %s , error %d\n", input_file_path, res);
         if (num_failed) (*num_failed)++;
         return res;
     }
@@ -89,7 +121,7 @@ int decrypt_self_by_path(const char *input_file_path, const char *output_file_pa
         if (num_failed) (*num_failed)++;
         return -1;
     }
-    printf("Decrypted self: '%s' -> '%s'\n", input_file_path, output_file_path);
+    Notify("Decrypted self: '%s' -> '%s'\n", input_file_path, output_file_path);
 
     if (num_success) (*num_success)++;
     return res;
@@ -159,7 +191,7 @@ int main() {
     int num_failed = 0;
     char output_path[PATH_MAX];
     const char *output_base_path = is_usb_mounted(0) ? "/mnt/usb0/dump" : "/data/dump";
-    printf("Output base path: %s\n", output_base_path);
+    Notify("Output base path: %s\n", output_base_path);
 
 #ifdef DUMP_SYSTEM_COMMON_LIB
     snprintf(output_path, sizeof(output_path), "%s/system/common/lib", output_base_path);
@@ -183,6 +215,6 @@ int main() {
     decrypt_all_selfs_in_directory("/mnt/sandbox/pfsmnt", output_path, 1, &num_success, &num_failed);
 #endif
 
-    printf("Done. Success: %d, Failed: %d\n", num_success, num_failed);
+    Notify("Done. Success: %d, Failed: %d\n", num_success, num_failed);
     return 0;
 }
